@@ -207,5 +207,52 @@ if(heads.length)addEventListener('scroll',()=>{let c=null;for(const h of heads){
   document.querySelectorAll('.toc a').forEach(a=>a.classList.toggle('act',a.getAttribute('href')==='#'+c))});
 """
 
+
+
+def build_single():
+    """Version autonome : un seul fichier HTML (CSS, JS et pages inclus)."""
+    pages = [("index", "Accueil")] + [(s, t) for s, _, t, _ in PAGES] + [("legende", "Légende")]
+    secs, tocs = [], []
+    for slug, _ in pages:
+        h = (OUT / f"{slug}.html").read_text(encoding="utf-8")
+        body = re.search(r"<main>(.*?)<footer>", h, re.S).group(1)
+        toc = re.search(r'<div class="toc">.*?</div>', h, re.S)
+        secs.append(f'<section class="pg" data-p="{slug}" hidden>{body}</section>')
+        tocs.append(f'<div class="tocs" data-p="{slug}" hidden>{toc.group(0) if toc else ""}</div>')
+    body = "".join(secs)
+    body = re.sub(r'href="(\w+)\.html"', r'href="#\1" data-go="\1"', body)
+    nav = "".join(f'<a href="#{s}" data-go="{s}">{t}</a>' for s, t in pages)
+    idx = (OUT / "search-index.js").read_text(encoding="utf-8")
+    js = (OUT / "app.js").read_text(encoding="utf-8")
+    js = js.replace('href="${e.p}.html#${e.id}"', 'href="#${e.p}" data-go="${e.p}" data-id="${e.id}"')
+    js = js.replace("const heads=", "const heads0=").replace("if(heads.length)addEventListener", "if(0)addEventListener")
+    router = r"""
+const pg=[...document.querySelectorAll('.pg')];
+function show(p,id){p=pg.some(x=>x.dataset.p===p)?p:'index';
+ pg.forEach(x=>x.hidden=x.dataset.p!==p);
+ document.querySelectorAll('.tocs').forEach(x=>x.hidden=x.dataset.p!==p);
+ document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.go===p));
+ const sec=pg.find(x=>x.dataset.p===p);let t=id&&[...sec.querySelectorAll('[id]')].find(e=>e.id===id);
+ if(t)t.scrollIntoView();else scrollTo(0,0);
+ side.classList.remove('open');history.replaceState(null,'','#'+p)}
+document.addEventListener('click',e=>{const a=e.target.closest('a');if(!a)return;
+ if(a.dataset.go){e.preventDefault();show(a.dataset.go,a.dataset.id);res.style.display='none'}
+ else if(a.getAttribute('href')&&a.getAttribute('href')[0]==='#'&&a.closest('.toc,article')){e.preventDefault();
+  const p=document.querySelector('.pg:not([hidden])').dataset.p;show(p,decodeURIComponent(a.getAttribute('href').slice(1)))}});
+show(location.hash.slice(1)||'index');
+"""
+    css = (OUT / "style.css").read_text(encoding="utf-8")
+    page = f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Base de connaissances SIXT</title>
+<style>{css}</style></head><body>
+<header class="top"><button id="menu" aria-label="Menu">☰</button><a class="brand" href="#index" data-go="index">SIXT<span>savoir</span></a>
+<div class="search"><input id="q" type="search" placeholder="Rechercher (ex. SIXT ONE, prix, marge EBT)" autocomplete="off"><div id="res"></div></div></header>
+<div class="wrap"><aside id="side"><nav id="nav">{nav}</nav>{"".join(tocs)}</aside><main>{body}</main></div>
+<script>{idx}</script><script>{js}{router}</script></body></html>"""
+    (OUT / "SIXT_site.html").write_text(page, encoding="utf-8")
+    print("Version autonome :", OUT / "SIXT_site.html")
+
+
 if __name__ == "__main__":
     build()
+    build_single()
